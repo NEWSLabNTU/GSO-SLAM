@@ -21,7 +21,8 @@
 #include <Eigen/Geometry>
 #include <opencv2/opencv.hpp>
 #include <opencv2/imgproc/types_c.h>
-#include <opencv2/cudaimgproc.hpp>
+// NOTE: opencv2/cudaimgproc.hpp is unavailable in JetPack OpenCV (no CUDA modules).
+// Call sites use CPU cv::Mat and move data to CUDA via torch tensors.
 #include <torch/torch.h>
 
 namespace tensor_utils
@@ -102,39 +103,29 @@ inline cv::Mat torchTensor2CvMat_Float32(torch::Tensor& tensor)
     return mat.clone();
 }
 
-inline torch::Tensor cvGpuMat2TorchTensor_Float32(cv::cuda::GpuMat& mat)
+// CPU fallback: JetPack OpenCV lacks cv::cuda modules. The functions kept
+// their original names for call-site compatibility, but now take cv::Mat.
+// Callers still get a torch::Tensor on CUDA via the `.to(kCUDA)` step.
+inline torch::Tensor cvGpuMat2TorchTensor_Float32(cv::Mat& mat)
 {
     torch::Tensor mat_tensor, tensor;
-    int64_t step = mat.step / sizeof(float);
 
     switch (mat.channels())
     {
     case 1:
     {
-        std::vector<int64_t> strides = {step, 1};
-        mat_tensor = torch::from_blob(
-            mat.data,
-            /*sizes=*/{mat.rows, mat.cols},
-            strides,
-            deleter,
-            torch::TensorOptions().device(torch::kCUDA));
-        tensor = mat_tensor.clone();
+        mat_tensor = torch::from_blob(mat.data, /*sizes=*/{mat.rows, mat.cols});
+        tensor = mat_tensor.clone().to(torch::kCUDA);
     }
     break;
 
     case 3:
     {
-        std::vector<int64_t> strides = {step, static_cast<int64_t>(mat.channels()), 1};
-        mat_tensor = torch::from_blob(
-            mat.data,
-            /*sizes=*/{mat.rows, mat.cols, mat.channels()},
-            strides,
-            deleter,
-            torch::TensorOptions().device(torch::kCUDA));
-        tensor = mat_tensor.clone().permute({2, 0, 1});
+        mat_tensor = torch::from_blob(mat.data, /*sizes=*/{mat.rows, mat.cols, mat.channels()});
+        tensor = mat_tensor.clone().to(torch::kCUDA).permute({2, 0, 1});
     }
     break;
-    
+
     default:
         std::cerr << "The mat has unsupported number of channels!" << std::endl;
     break;
@@ -143,29 +134,29 @@ inline torch::Tensor cvGpuMat2TorchTensor_Float32(cv::cuda::GpuMat& mat)
     return tensor.contiguous();
 }
 
-inline cv::cuda::GpuMat torchTensor2CvGpuMat_Float32(torch::Tensor& tensor)
+inline cv::Mat torchTensor2CvGpuMat_Float32(torch::Tensor& tensor)
 {
-    cv::cuda::GpuMat mat;
-    torch::Tensor mat_tensor = tensor.clone();
+    cv::Mat mat;
+    torch::Tensor mat_tensor = tensor.clone().to(torch::kCPU);
 
     switch (mat_tensor.ndimension())
     {
     case 2:
     {
-        mat = cv::cuda::GpuMat(/*rows=*/mat_tensor.size(0),
-                               /*cols=*/mat_tensor.size(1),
-                               /*type=*/CV_32FC1,
-                               /*data=*/mat_tensor.data_ptr<float>());
+        mat = cv::Mat(/*rows=*/mat_tensor.size(0),
+                      /*cols=*/mat_tensor.size(1),
+                      /*type=*/CV_32FC1,
+                      /*data=*/mat_tensor.data_ptr<float>());
     }
     break;
 
     case 3:
     {
         mat_tensor = mat_tensor.detach().permute({1, 2, 0}).contiguous();
-        mat = cv::cuda::GpuMat(/*rows=*/mat_tensor.size(0),
-                               /*cols=*/mat_tensor.size(1),
-                               /*type=*/CV_32FC3,
-                               /*data=*/mat_tensor.data_ptr<float>());
+        mat = cv::Mat(/*rows=*/mat_tensor.size(0),
+                      /*cols=*/mat_tensor.size(1),
+                      /*type=*/CV_32FC3,
+                      /*data=*/mat_tensor.data_ptr<float>());
     }
     break;
 

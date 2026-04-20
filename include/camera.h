@@ -23,7 +23,8 @@
 #include <vector>
 #include <opencv2/opencv.hpp>
 #include <opencv2/imgproc/types_c.h>
-#include <opencv2/cudawarping.hpp>
+// NOTE: opencv2/cudawarping.hpp unavailable in JetPack OpenCV (no CUDA modules).
+// CPU cv::resize is used instead.
 
 #include "types.h"
 #include "tensor_utils.h"
@@ -90,15 +91,13 @@ public:
 
         if (do_gaus_pyramid_training) {
             assert(!gaus_pyramid_height_.empty() && !gaus_pyramid_width_.empty());
-            cv::cuda::GpuMat undistort_mask_gpu;
-            undistort_mask_gpu.upload(undistort_mask);
             gaus_pyramid_undistort_mask_.resize(num_gaus_pyramid_sub_levels_);
             for (int l = 0; l < num_gaus_pyramid_sub_levels_; ++l) {
-                cv::cuda::GpuMat undistort_mask_gpu_resized;
-                cv::cuda::resize(undistort_mask_gpu, undistort_mask_gpu_resized,
-                                 cv::Size(gaus_pyramid_width_[l], gaus_pyramid_height_[l]));
+                cv::Mat undistort_mask_resized;
+                cv::resize(undistort_mask, undistort_mask_resized,
+                           cv::Size(gaus_pyramid_width_[l], gaus_pyramid_height_[l]));
                 gaus_pyramid_undistort_mask_[l] =
-                    tensor_utils::cvGpuMat2TorchTensor_Float32(undistort_mask_gpu_resized);
+                    tensor_utils::cvGpuMat2TorchTensor_Float32(undistort_mask_resized);
             }
         }
     }

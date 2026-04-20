@@ -504,30 +504,18 @@ void GaussianMapper::run()
             // Prepare multi resolution images for training
             for (auto& kfit : scene_->keyframes()) {
                 auto pkf = kfit.second;
-                if (device_type_ == torch::kCUDA) {
-                    cv::cuda::GpuMat img_gpu;
-                    img_gpu.upload(pkf->img_undist_);
-                    pkf->gaus_pyramid_original_image_.resize(num_gaus_pyramid_sub_levels_);
-                    for (int l = 0; l < num_gaus_pyramid_sub_levels_; ++l) {
-                        cv::cuda::GpuMat img_resized;
-                        cv::cuda::resize(img_gpu, img_resized,
-                                        cv::Size(pkf->gaus_pyramid_width_[l], pkf->gaus_pyramid_height_[l]));
-                        pkf->gaus_pyramid_original_image_[l] =
-                            tensor_utils::cvGpuMat2TorchTensor_Float32(img_resized);
-                    }
-                }
-                else {
-                    pkf->gaus_pyramid_original_image_.resize(num_gaus_pyramid_sub_levels_);
-                    for (int l = 0; l < num_gaus_pyramid_sub_levels_; ++l) {
-                        cv::Mat img_resized;
-                        cv::resize(pkf->img_undist_, img_resized,
-                                cv::Size(pkf->gaus_pyramid_width_[l], pkf->gaus_pyramid_height_[l]));
-                        pkf->gaus_pyramid_original_image_[l] =
-                            tensor_utils::cvMat2TorchTensor_Float32(img_resized, device_type_);
-                    }
+                // CPU path only (JetPack OpenCV has no CUDA modules). Data moves to
+                // GPU via torch tensors through cvMat2TorchTensor_Float32.
+                pkf->gaus_pyramid_original_image_.resize(num_gaus_pyramid_sub_levels_);
+                for (int l = 0; l < num_gaus_pyramid_sub_levels_; ++l) {
+                    cv::Mat img_resized;
+                    cv::resize(pkf->img_undist_, img_resized,
+                            cv::Size(pkf->gaus_pyramid_width_[l], pkf->gaus_pyramid_height_[l]));
+                    pkf->gaus_pyramid_original_image_[l] =
+                        tensor_utils::cvMat2TorchTensor_Float32(img_resized, device_type_);
                 }
             }
-            
+
             // Prepare for training
             {
                 std::unique_lock<std::mutex> lock_render(mutex_render_);
@@ -619,27 +607,14 @@ void GaussianMapper::trainColmap()
     for (auto& kfit : scene_->keyframes()) {
         auto pkf = kfit.second;
         increaseKeyframeTimesOfUse(pkf, newKeyframeTimesOfUse());
-        if (device_type_ == torch::kCUDA) {
-            cv::cuda::GpuMat img_gpu;
-            img_gpu.upload(pkf->img_undist_);
-            pkf->gaus_pyramid_original_image_.resize(num_gaus_pyramid_sub_levels_);
-            for (int l = 0; l < num_gaus_pyramid_sub_levels_; ++l) {
-                cv::cuda::GpuMat img_resized;
-                cv::cuda::resize(img_gpu, img_resized,
-                                cv::Size(pkf->gaus_pyramid_width_[l], pkf->gaus_pyramid_height_[l]));
-                pkf->gaus_pyramid_original_image_[l] =
-                    tensor_utils::cvGpuMat2TorchTensor_Float32(img_resized);
-            }
-        }
-        else {
-            pkf->gaus_pyramid_original_image_.resize(num_gaus_pyramid_sub_levels_);
-            for (int l = 0; l < num_gaus_pyramid_sub_levels_; ++l) {
-                cv::Mat img_resized;
-                cv::resize(pkf->img_undist_, img_resized,
-                        cv::Size(pkf->gaus_pyramid_width_[l], pkf->gaus_pyramid_height_[l]));
-                pkf->gaus_pyramid_original_image_[l] =
-                    tensor_utils::cvMat2TorchTensor_Float32(img_resized, device_type_);
-            }
+        // CPU path only (no OpenCV CUDA modules on JetPack).
+        pkf->gaus_pyramid_original_image_.resize(num_gaus_pyramid_sub_levels_);
+        for (int l = 0; l < num_gaus_pyramid_sub_levels_; ++l) {
+            cv::Mat img_resized;
+            cv::resize(pkf->img_undist_, img_resized,
+                    cv::Size(pkf->gaus_pyramid_width_[l], pkf->gaus_pyramid_height_[l]));
+            pkf->gaus_pyramid_original_image_[l] =
+                tensor_utils::cvMat2TorchTensor_Float32(img_resized, device_type_);
         }
     }
 
@@ -1075,28 +1050,14 @@ void GaussianMapper::combineMappingOperations()
             // new_kf->kps_point_local_ = std::move(pointsLocal);
             new_kf->img_undist_ = imgRGB_undistorted;
             new_kf->img_auxiliary_undist_ = imgAux_undistorted;
-            // Prepare multi resolution images for training
-            if (device_type_ == torch::kCUDA) {
-                cv::cuda::GpuMat img_gpu;
-                img_gpu.upload(new_kf->img_undist_);
-                new_kf->gaus_pyramid_original_image_.resize(num_gaus_pyramid_sub_levels_);
-                for (int l = 0; l < num_gaus_pyramid_sub_levels_; ++l) {
-                    cv::cuda::GpuMat img_resized;
-                    cv::cuda::resize(img_gpu, img_resized,
-                                        cv::Size(new_kf->gaus_pyramid_width_[l], new_kf->gaus_pyramid_height_[l]));
-                    new_kf->gaus_pyramid_original_image_[l] =
-                        tensor_utils::cvGpuMat2TorchTensor_Float32(img_resized);
-                }
-            }
-            else {
-                new_kf->gaus_pyramid_original_image_.resize(num_gaus_pyramid_sub_levels_);
-                for (int l = 0; l < num_gaus_pyramid_sub_levels_; ++l) {
-                    cv::Mat img_resized;
-                    cv::resize(new_kf->img_undist_, img_resized,
-                                cv::Size(new_kf->gaus_pyramid_width_[l], new_kf->gaus_pyramid_height_[l]));
-                    new_kf->gaus_pyramid_original_image_[l] =
-                        tensor_utils::cvMat2TorchTensor_Float32(img_resized, device_type_);
-                }
+            // Prepare multi resolution images for training (CPU path only).
+            new_kf->gaus_pyramid_original_image_.resize(num_gaus_pyramid_sub_levels_);
+            for (int l = 0; l < num_gaus_pyramid_sub_levels_; ++l) {
+                cv::Mat img_resized;
+                cv::resize(new_kf->img_undist_, img_resized,
+                            cv::Size(new_kf->gaus_pyramid_width_[l], new_kf->gaus_pyramid_height_[l]));
+                new_kf->gaus_pyramid_original_image_[l] =
+                    tensor_utils::cvMat2TorchTensor_Float32(img_resized, device_type_);
             }
 
             inserted_kf_cursor = fh->incomingID;
@@ -1202,28 +1163,14 @@ void GaussianMapper::handleNewKeyframe(
     if (isdoingInactiveGeoDensify())
         increasePcdByKeyframeInactiveGeoDensify(pkf);
 
-    // Prepare multi resolution images for training
-    if (device_type_ == torch::kCUDA) {
-        cv::cuda::GpuMat img_gpu;
-        img_gpu.upload(pkf->img_undist_);
-        pkf->gaus_pyramid_original_image_.resize(num_gaus_pyramid_sub_levels_);
-        for (int l = 0; l < num_gaus_pyramid_sub_levels_; ++l) {
-            cv::cuda::GpuMat img_resized;
-            cv::cuda::resize(img_gpu, img_resized,
-                                cv::Size(pkf->gaus_pyramid_width_[l], pkf->gaus_pyramid_height_[l]));
-            pkf->gaus_pyramid_original_image_[l] =
-                tensor_utils::cvGpuMat2TorchTensor_Float32(img_resized);
-        }
-    }
-    else {
-        pkf->gaus_pyramid_original_image_.resize(num_gaus_pyramid_sub_levels_);
-        for (int l = 0; l < num_gaus_pyramid_sub_levels_; ++l) {
-            cv::Mat img_resized;
-            cv::resize(pkf->img_undist_, img_resized,
-                        cv::Size(pkf->gaus_pyramid_width_[l], pkf->gaus_pyramid_height_[l]));
-            pkf->gaus_pyramid_original_image_[l] =
-                tensor_utils::cvMat2TorchTensor_Float32(img_resized, device_type_);
-        }
+    // Prepare multi resolution images for training (CPU path only).
+    pkf->gaus_pyramid_original_image_.resize(num_gaus_pyramid_sub_levels_);
+    for (int l = 0; l < num_gaus_pyramid_sub_levels_; ++l) {
+        cv::Mat img_resized;
+        cv::resize(pkf->img_undist_, img_resized,
+                    cv::Size(pkf->gaus_pyramid_width_[l], pkf->gaus_pyramid_height_[l]));
+        pkf->gaus_pyramid_original_image_[l] =
+            tensor_utils::cvMat2TorchTensor_Float32(img_resized, device_type_);
     }
 }
 
@@ -1429,9 +1376,8 @@ void GaussianMapper::increasePcdByKeyframeInactiveGeoDensify(
         torch::Tensor kps_has3D_tensor = torch::where(
             kps_point_local_tensor.index({torch::indexing::Slice(), 2}) > 0.0f, true, false);
 
-        cv::cuda::GpuMat rgb_gpu;
-        rgb_gpu.upload(pkf->img_undist_);
-        torch::Tensor colors = tensor_utils::cvGpuMat2TorchTensor_Float32(rgb_gpu);
+        cv::Mat rgb_cpu = pkf->img_undist_;
+        torch::Tensor colors = tensor_utils::cvGpuMat2TorchTensor_Float32(rgb_cpu);
         colors = colors.permute({1, 2, 0}).flatten(0, 1).contiguous();
 
         auto result =
@@ -1460,35 +1406,34 @@ void GaussianMapper::increasePcdByKeyframeInactiveGeoDensify(
     case STEREO:
     {
 // savePly(result_dir_ / (std::to_string(getIteration()) + "_" + std::to_string(pkf->fid_) + "_0_before_inactive_geo_densify"));
-        cv::cuda::GpuMat rgb_left_gpu, rgb_right_gpu;
-        cv::cuda::GpuMat gray_left_gpu, gray_right_gpu;
-
-        rgb_left_gpu.upload(pkf->img_undist_);
-        rgb_right_gpu.upload(pkf->img_auxiliary_undist_);
+        // CPU path: JetPack OpenCV has no CUDA modules, so use cv::Mat + cv::StereoSGBM.
+        cv::Mat rgb_left_cpu = pkf->img_undist_;
+        cv::Mat rgb_right_cpu = pkf->img_auxiliary_undist_;
+        cv::Mat gray_left_cpu, gray_right_cpu;
 
         // From CV_32FC3 to CV_32FC1
-        cv::cuda::cvtColor(rgb_left_gpu, gray_left_gpu, cv::COLOR_RGB2GRAY);
-        cv::cuda::cvtColor(rgb_right_gpu, gray_right_gpu, cv::COLOR_RGB2GRAY);
+        cv::cvtColor(rgb_left_cpu, gray_left_cpu, cv::COLOR_RGB2GRAY);
+        cv::cvtColor(rgb_right_cpu, gray_right_cpu, cv::COLOR_RGB2GRAY);
 
         // From CV_32FC1 to CV_8UC1
-        gray_left_gpu.convertTo(gray_left_gpu, CV_8UC1, 255.0);
-        gray_right_gpu.convertTo(gray_right_gpu, CV_8UC1, 255.0);
+        gray_left_cpu.convertTo(gray_left_cpu, CV_8UC1, 255.0);
+        gray_right_cpu.convertTo(gray_right_cpu, CV_8UC1, 255.0);
 
-        // Compute disparity
-        cv::cuda::GpuMat cv_disp;
-        stereo_cv_sgm_->compute(gray_left_gpu, gray_right_gpu, cv_disp);
+        // Compute disparity (CV_16S output from SGBM)
+        cv::Mat cv_disp;
+        stereo_cv_sgm_->compute(gray_left_cpu, gray_right_cpu, cv_disp);
         cv_disp.convertTo(cv_disp, CV_32F, 1.0 / 16.0);
 
         // Reproject to get 3D points
-        cv::cuda::GpuMat cv_points3D;
-        cv::cuda::reprojectImageTo3D(cv_disp, cv_points3D, stereo_Q_, 3);
+        cv::Mat cv_points3D;
+        cv::reprojectImageTo3D(cv_disp, cv_points3D, stereo_Q_, 3);
 
-        // From cv::cuda::GpuMat to torch::Tensor
+        // From cv::Mat to torch::Tensor
         torch::Tensor disp = tensor_utils::cvGpuMat2TorchTensor_Float32(cv_disp);
         disp = disp.flatten(0, 1).contiguous();
         torch::Tensor points3D = tensor_utils::cvGpuMat2TorchTensor_Float32(cv_points3D);
         points3D = points3D.permute({1, 2, 0}).flatten(0, 1).contiguous();
-        torch::Tensor colors = tensor_utils::cvGpuMat2TorchTensor_Float32(rgb_left_gpu);
+        torch::Tensor colors = tensor_utils::cvGpuMat2TorchTensor_Float32(rgb_left_cpu);
         colors = colors.permute({1, 2, 0}).flatten(0, 1).contiguous();
     
         // Clear undisired and unreliable stereo points
@@ -1560,14 +1505,14 @@ void GaussianMapper::increasePcdByKeyframeInactiveGeoDensify(
     case RGBD:
     {
 // savePly(result_dir_ / (std::to_string(getIteration()) + "_" + std::to_string(pkf->fid_) + "_0_before_inactive_geo_densify"));
-        cv::cuda::GpuMat img_rgb_gpu, img_depth_gpu;
-        img_rgb_gpu.upload(pkf->img_undist_);
-        img_depth_gpu.upload(pkf->img_auxiliary_undist_);
+        // CPU path only.
+        cv::Mat img_rgb_cpu = pkf->img_undist_;
+        cv::Mat img_depth_cpu = pkf->img_auxiliary_undist_;
 
-        // From cv::cuda::GpuMat to torch::Tensor
-        torch::Tensor rgb = tensor_utils::cvGpuMat2TorchTensor_Float32(img_rgb_gpu);
+        // From cv::Mat to torch::Tensor
+        torch::Tensor rgb = tensor_utils::cvGpuMat2TorchTensor_Float32(img_rgb_cpu);
         rgb = rgb.permute({1, 2, 0}).flatten(0, 1).contiguous();
-        torch::Tensor depth = tensor_utils::cvGpuMat2TorchTensor_Float32(img_depth_gpu);
+        torch::Tensor depth = tensor_utils::cvGpuMat2TorchTensor_Float32(img_depth_cpu);
         depth = depth.flatten(0, 1).contiguous();
 
         // To clear undisired and unreliable depth

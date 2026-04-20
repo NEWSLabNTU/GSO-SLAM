@@ -10,3 +10,5 @@ build-*
 result.txt
 experiments_bash/results
 imgui.ini
+dataset/*
+!dataset/*.sh

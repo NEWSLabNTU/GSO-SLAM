@@ -44,11 +44,24 @@ FetchContent_Declare(rerun_sdk URL
 FetchContent_MakeAvailable(rerun_sdk)
 
 # flags
-add_definitions("-DENABLE_SSE")
+# ENABLE_SSE only on x86/x86_64. On aarch64 (Orin), SSE intrinsics do not exist
+# natively; source files use sse2neon guards instead.
+if (CMAKE_SYSTEM_PROCESSOR MATCHES "(x86)|(X86)|(amd64)|(AMD64)")
+    add_definitions("-DENABLE_SSE")
+endif()
 set(CMAKE_CXX_FLAGS
    "${SSE_FLAGS} -O3 -g -std=c++0x -march=native"
 #   "${SSE_FLAGS} -O3 -g -std=c++0x -fno-omit-frame-pointer"
 )
+
+# Some older Eigen3 configs (e.g. on Jetson JetPack) do not provide the
+# Eigen3::Eigen imported target that Pangolin links against. Create it
+# manually when missing.
+if (NOT TARGET Eigen3::Eigen AND EIGEN3_INCLUDE_DIR)
+    add_library(Eigen3::Eigen INTERFACE IMPORTED)
+    set_target_properties(Eigen3::Eigen PROPERTIES
+        INTERFACE_INCLUDE_DIRECTORIES "${EIGEN3_INCLUDE_DIR}")
+endif()
 
 if (MSVC)
      set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /EHsc")
@@ -137,6 +150,7 @@ add_library(simple_knn SHARED
     thirdparty/simple-knn/simple_knn.h
     thirdparty/simple-knn/spatial.cu
     thirdparty/simple-knn/spatial.h)
+set_target_properties(simple_knn PROPERTIES CUDA_ARCHITECTURES "87")
 # target_compile_features(simple_knn PUBLIC cxx_std_17)
 target_link_libraries(simple_knn "${TORCH_LIBRARIES}")
 
@@ -159,7 +173,7 @@ add_library(cuda_rasterizer SHARED
     cuda_rasterizer/rasterizer_impl.cu
     cuda_rasterizer/rasterizer_impl.h
     cuda_rasterizer/stereo_vision.h)
-set_target_properties(cuda_rasterizer PROPERTIES CUDA_ARCHITECTURES "75;86")
+set_target_properties(cuda_rasterizer PROPERTIES CUDA_ARCHITECTURES "87")
 # target_compile_features(cuda_rasterizer PUBLIC cxx_std_17)
 target_include_directories(cuda_rasterizer PRIVATE
     ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})

@@ -33,9 +33,9 @@
 #include <mutex>
 
 #include <opencv2/opencv.hpp>
-#include <opencv2/cudaimgproc.hpp>
-#include <opencv2/cudastereo.hpp>
-#include <opencv2/cudawarping.hpp>
+// NOTE: OpenCV CUDA modules (cudaimgproc, cudastereo, cudawarping) are not
+// shipped with JetPack 6.1's OpenCV. CPU equivalents are used instead
+// (cv::resize, cv::cvtColor, cv::reprojectImageTo3D, cv::StereoSGBM).
 
 #include <jsoncpp/json/json.h>
 
@@ -320,7 +320,7 @@ protected:
     int stereo_min_disparity_ = 0;
     int stereo_num_disparity_ = 128;
     cv::Mat stereo_Q_;
-    cv::Ptr<cv::cuda::StereoSGM> stereo_cv_sgm_;
+    cv::Ptr<cv::StereoSGBM> stereo_cv_sgm_;
     float RGBD_min_depth_ = 0.0f;
     float RGBD_max_depth_ = 100.0f;
 

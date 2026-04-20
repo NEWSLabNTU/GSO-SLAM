@@ -168,5 +168,42 @@ Still out of scope: actual rosbag data under `data/`, Replica/TUM datasets.
 - No Replica dataset present on disk (nor TUM). Validation requires `~/GSO-SLAM/../dataset/Replica/room0/...` per `replica.sh`.
 - Will be reattempted in Phase D once the user restores a dataset. Expected numbers: ATE RMSE ≈ 0.2 cm, ~10 fps, ~234 keyframes (see `RESULT.md`).
 
+---
+
+## Phase D — Dataset Restore + End-to-End Validation (in progress 2026-04-20)
+
+**D.1 Replica (cancelled)**
+- `download_replica.sh` fetched from cvg-data.inf.ethz.ch at ~190 KB/s — ETA 7+ hours. Cancelled per user; partial `Replica.zip` removed.
+
+**D.2 TUM (in progress)**
+- `download_tum.sh` fetched freiburg1_desk (344 MB) successfully, freiburg2_xyz downloading in background, freiburg3 queued.
+- Script extracts tarballs into `dataset/` root, but `experiments_bash/tum.sh` expects `dataset/TUM/rgbd_dataset_*/`. Manually moved freiburg1_desk into `dataset/TUM/` to complete staging.
+
+**D.3 Preprocess**
+- Ran `bash preprocess.sh`. Copied `camera.txt` and `tum_freiburg*.txt` associations from `data/TUM/...` templates into `TUM/rgbd_dataset_*/`. (Preprocess also created scaffolding for fr2/fr3 which will be populated once their tarballs finish.)
+
+**D.4 Re-validation on TUM freiburg1_desk**
+
+Two failures hit before success — worth recording:
+
+1. First failure: **segfault with `quiet=1`**. Root cause: `justfile_directory() / "../dataset/TUM"` resolved to `/home/jetson/dataset/TUM` (outside the repo) rather than `/home/jetson/GSO-SLAM/dataset/TUM`. With `quiet=1`, the "file not found" error was suppressed and the code later dereferenced a null reader → SIGSEGV.
+2. Fix: Changed `justfile` paths from `"../dataset/..."` to `"dataset/..."`. New `tum-headless` recipe added so TUM can be run without Pangolin/Gaussian viewers.
+
+After the fix, `just tum-headless freiburg1_desk` ran to completion:
+
+| Metric | Value |
+|--------|-------|
+| Frames processed | 612 / 613 |
+| Tracking speed | 10.0 fps |
+| Real-time factor | 0.389x single-core / 0.739x multi-core |
+| DSO resets | 1 (shutdown checkpoint `887_shutdown/`) |
+| Output | `results/tum_freiburg1_desk/gs_map/point_cloud.ply` (5.9 MB), `input.ply` (2.4 MB), `cameras.json`, `AllFramePose.txt` + per-keyframe `pose/`, `img/`, `map/`, `aff/` |
+| Exit code | 0 |
+
+This confirms the **post-recovery build runs end-to-end on real data**: calibration loading, DSO tracking, GS mapping + CUDA rasteriser, PLY serialisation all work. fr1_desk is a harder sequence than Replica for DSO (fast rotation + close objects explain the sub-real-time factor and the re-track attempts) — the expected Replica room0 numbers from `RESULT.md` (0.2 cm ATE, 0.89x RT) should be met once Replica is available.
+
+ATE not computed here (would need `evaluate_ate_scale_tum.py` + groundtruth alignment).
+
+
 
 

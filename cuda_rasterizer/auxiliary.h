@@ -35,7 +35,7 @@
 // #define FAR_PLANE 100.0
 #define DETACH_WEIGHT 0
 
-__device__ const float near_n = 0.2;
+__device__ const float near_n = 0.01;
 __device__ const float far_n = 100.0;
 
 __device__ const float FilterSize = 0.707106; // sqrt(2) / 2
@@ -203,7 +203,7 @@ __forceinline__ __device__ bool in_frustum(int idx,
 	float3 p_proj = { p_hom.x * p_w, p_hom.y * p_w, p_hom.z * p_w };
 	p_view = transformPoint4x3(p_orig, viewmatrix);
 
-	if (p_view.z <= 0.2f)// || ((p_proj.x < -1.3 || p_proj.x > 1.3 || p_proj.y < -1.3 || p_proj.y > 1.3)))
+	if (p_view.z <= 0.01f)// || ((p_proj.x < -1.3 || p_proj.x > 1.3 || p_proj.y < -1.3 || p_proj.y > 1.3)))
 	{
 		if (prefiltered)
 		{

@@ -30,7 +30,7 @@ do
         mode=1 \
         quiet=1 \
         nogui=1 \
-        cfg_yaml="${HOME}/GSO_SLAM/cfg/gaussian_mapper/Monocular/TUM/tum_${dataset_name}.yaml" \
+        cfg_yaml="${HOME}/GSO-SLAM/cfg/gaussian_mapper/Monocular/TUM/tum_${dataset_name}.yaml" \
         save_dir="${SAVE_PATH}" \
         use_gaussian_viewer=0
 
